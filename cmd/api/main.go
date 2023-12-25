@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"github.com/clerkinc/clerk-sdk-go/clerk"
 	svix "github.com/svix/svix-webhooks/go"
 	"log/slog"
 	"os"
@@ -42,8 +44,22 @@ type application struct {
 	logger *slog.Logger
 	wg     sync.WaitGroup
 	clerk  struct {
-		svixWebHook *svix.Webhook
+		svixWebHook  *svix.Webhook
+		eventEmitter *ClerkEventEmitter
 	}
+}
+
+func registerClerkHandlers(logger *slog.Logger, c *ClerkEventEmitter) {
+	c.Register(UserDeleted, func(user interface{}) {
+		clerkUser, ok := user.(clerk.User)
+		if !ok {
+			logger.Error("Could not assert the user data from UserDeleted event to a user type.")
+			return
+		}
+
+		// user is still just an interface{}
+		logger.Info(fmt.Sprintf("User: %s's account was deleted.", clerkUser.ID))
+	})
 }
 
 func run(logger *slog.Logger) error {
@@ -63,15 +79,19 @@ func run(logger *slog.Logger) error {
 
 	// setup clerk conn
 	wh, err := svix.NewWebhook(env.GetString("CLERK_WEBHOOK_SECRET", ""))
+	clerkEventEmitter := NewClerkEventEmitter()
+	registerClerkHandlers(logger, clerkEventEmitter)
 
 	app := &application{
 		config: cfg,
 		db:     db,
 		logger: logger,
 		clerk: struct {
-			svixWebHook *svix.Webhook
+			svixWebHook  *svix.Webhook
+			eventEmitter *ClerkEventEmitter
 		}{
-			svixWebHook: wh,
+			svixWebHook:  wh,
+			eventEmitter: clerkEventEmitter,
 		},
 	}
 

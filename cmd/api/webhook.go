@@ -6,12 +6,14 @@ import (
 	"net/http"
 )
 
-type Event struct {
+type ClerkEvent struct {
 	Data   *json.RawMessage `json:"data"`
 	Object string           `json:"object"`
-	Type   string           `json:"type"`
+	Type   ClerkEventType   `json:"type"`
 }
 
+// clerkWebhook should run on /webhooks/clerk. This is set in Clerk's dashboard and
+// if this is changed it WILL break things
 func (app *application) clerkWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		payload := make([]byte, 2048)
@@ -27,7 +29,7 @@ func (app *application) clerkWebhook() http.HandlerFunc {
 			return
 		}
 
-		var event Event
+		var event ClerkEvent
 		err = json.Unmarshal(payload, &event)
 		if err != nil {
 			app.logger.Error("could not parse the event from the webhook:", err)
@@ -35,26 +37,18 @@ func (app *application) clerkWebhook() http.HandlerFunc {
 			return
 		}
 
+		// These two types will have different event.Data structures
 		switch event.Type {
-		case "user.created":
-			err := parseEventUserCreated(event)
+		case UserCreated:
+			var user clerk.User
+			err := json.Unmarshal(*event.Data, &user)
 			if err != nil {
 				app.logger.Error("could not parse the data from the webhook:", err)
 				http.Error(w, "Error parsing webhook", http.StatusInternalServerError)
 				return
 			}
 
+			app.clerk.eventEmitter.Trigger(event.Type, user)
 		}
 	}
-}
-
-// TODO: set up some emitter/register on event handler
-func parseEventUserCreated(event Event) error {
-	var user clerk.User
-	err := json.Unmarshal(*event.Data, &user)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

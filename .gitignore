@@ -22,3 +22,4 @@ go.work
 
 # drop this shit out
 .env.local
+.idea
